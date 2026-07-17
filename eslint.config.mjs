@@ -31,6 +31,13 @@ export default tseslint.config(
         'error',
         { brands: ['Agentage', 'Agentage Memory', 'Agentage Galaxy'], acronyms: ['3D', 'AI'] },
       ],
+      // Obsidian's directory autoscan enables these beyond the recommended set.
+      'obsidianmd/prefer-active-doc': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
     },
   },
   {
