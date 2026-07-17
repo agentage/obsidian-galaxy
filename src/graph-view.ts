@@ -30,7 +30,7 @@ export class Memory3DView extends ItemView {
   }
 
   getDisplayText(): string {
-    return '3D Graph';
+    return '3D graph';
   }
 
   getIcon(): string {

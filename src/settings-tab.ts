@@ -1,4 +1,4 @@
-import { Plugin, PluginSettingTab, Setting, type App } from 'obsidian';
+import { Plugin, PluginSettingTab, Setting, type App, type SettingDefinitionItem } from 'obsidian';
 import type { Memory3DHost } from './graph-view';
 
 // Defaults for the 3D graph. Live, fine-grained tuning (forces, sizes, search) lives
@@ -9,6 +9,72 @@ export class Memory3DSettingTab extends PluginSettingTab {
   constructor(app: App, host: Memory3DHost & Plugin) {
     super(app, host);
     this.host = host;
+  }
+
+  // Declarative mirror of display() so settings search (Obsidian 1.13+) can index the
+  // tab; display() stays the renderer because minAppVersion predates the declarative API.
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        type: 'group',
+        heading: 'View',
+        items: [
+          {
+            name: 'Auto-rotate',
+            desc: 'Slowly orbit the camera around the graph.',
+            control: { type: 'toggle', key: 'autoRotate' },
+          },
+          { name: 'Show labels', control: { type: 'toggle', key: 'showLabels' } },
+          { name: 'Show arrows', control: { type: 'toggle', key: 'showArrows' } },
+        ],
+      },
+      {
+        type: 'group',
+        heading: 'Filters',
+        items: [
+          { name: 'Tags', control: { type: 'toggle', key: 'filters.showTags' } },
+          { name: 'Attachments', control: { type: 'toggle', key: 'filters.showAttachments' } },
+          {
+            name: 'Existing files only',
+            control: { type: 'toggle', key: 'filters.hideUnresolved' },
+          },
+          { name: 'Orphans', control: { type: 'toggle', key: 'filters.showOrphans' } },
+        ],
+      },
+      {
+        type: 'group',
+        heading: 'Agentage Memory',
+        items: [
+          {
+            name: 'One memory for every AI, owned by you',
+            desc:
+              'This 3D graph visualizes your local vault. Agentage Memory syncs it to a private ' +
+              'memory that Claude, ChatGPT, Cursor, and any MCP client can read and write.',
+            action: () => window.open('https://memory.agentage.io'),
+          },
+        ],
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    return key
+      .split('.')
+      .reduce<unknown>(
+        (o, k) => (o as Record<string, unknown> | undefined)?.[k],
+        this.host.settings
+      );
+  }
+
+  setControlValue(key: string, value: unknown): Promise<void> {
+    const path = key.split('.');
+    const leaf = path.pop() as string;
+    const target = path.reduce<Record<string, unknown>>(
+      (o, k) => o[k] as Record<string, unknown>,
+      this.host.settings as unknown as Record<string, unknown>
+    );
+    target[leaf] = value;
+    return this.host.saveSettings();
   }
 
   display(): void {
