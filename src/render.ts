@@ -146,7 +146,7 @@ export const createGraphRenderer = (
   const scheduleResolution = (): void => {
     if (resScheduled) return;
     resScheduled = true;
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       resScheduled = false;
       if (!destroyed) updateResolution();
     });
