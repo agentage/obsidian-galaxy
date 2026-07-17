@@ -1,7 +1,7 @@
 {
 	"id": "agentage-galaxy",
 	"name": "Agentage Galaxy",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"minAppVersion": "1.7.2",
 	"description": "A 3D, rotating force-graph of your vault: notes are nodes, links are edges. Fly through your knowledge graph from the toolbar. Part of Agentage Memory, the shared memory for every AI.",
 	"author": "agentage",
