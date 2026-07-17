@@ -7,6 +7,9 @@ import type { GraphFilters, RawNote, RenderOptions } from '../src/types';
 // graph-data.ts) against sample notes, so we can verify the real 3D output in a
 // plain browser without Obsidian. Sample notes are injected as a global by
 // scripts/build-sample.mjs (preview/sample-data.js).
+
+// Plain-browser harness: Obsidian's activeDocument global does not exist here.
+const doc = window.document;
 const notes: RawNote[] =
   (window as unknown as { AGENTAGE_3D_SAMPLE?: RawNote[] }).AGENTAGE_3D_SAMPLE ?? [];
 
@@ -23,7 +26,7 @@ const opts: RenderOptions = {
   palette: DEFAULT_PALETTE,
 };
 
-const host = document.getElementById('graph');
+const host = doc.getElementById('graph');
 if (!host) throw new Error('missing #graph');
 
 const renderer = createGraphRenderer(host, opts);
@@ -33,7 +36,7 @@ const fit = () => renderer.resize(window.innerWidth, window.innerHeight);
 const rebuild = () => {
   renderer.setData(graphFromMarkdown(notes, filters));
   const count = graphFromMarkdown(notes, filters).nodes.length;
-  const badge = document.getElementById('count');
+  const badge = doc.getElementById('count');
   if (badge) badge.textContent = `${count} nodes`;
 };
 
@@ -43,11 +46,11 @@ window.addEventListener('resize', fit);
 
 // --- wire the controls -----------------------------------------------------------
 const check = (id: string, fn: (v: boolean) => void): void => {
-  const el = document.getElementById(id) as HTMLInputElement | null;
+  const el = doc.getElementById(id) as HTMLInputElement | null;
   el?.addEventListener('change', () => fn(el.checked));
 };
 const range = (id: string, fn: (v: number) => void): void => {
-  const el = document.getElementById(id) as HTMLInputElement | null;
+  const el = doc.getElementById(id) as HTMLInputElement | null;
   el?.addEventListener('input', () => fn(Number(el.value)));
 };
 
@@ -88,16 +91,16 @@ range('fo-distance', (v) => {
   renderer.setOptions({ ...opts });
 });
 
-const settingsBtn = document.getElementById('settings-btn');
-const panel = document.getElementById('panel');
+const settingsBtn = doc.getElementById('settings-btn');
+const panel = doc.getElementById('panel');
 settingsBtn?.addEventListener('click', () => {
   const open = panel?.classList.toggle('open');
   settingsBtn.classList.toggle('is-active', !!open);
 });
 
-document.getElementById('center-btn')?.addEventListener('click', () => renderer.zoomToFit());
+doc.getElementById('center-btn')?.addEventListener('click', () => renderer.zoomToFit());
 
-const searchEl = document.getElementById('f-search') as HTMLInputElement | null;
+const searchEl = doc.getElementById('f-search') as HTMLInputElement | null;
 searchEl?.addEventListener('input', () => {
   filters.search = searchEl.value;
   rebuild();
