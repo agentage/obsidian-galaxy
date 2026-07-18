@@ -1,0 +1,57 @@
+name: Auto-tag Release
+
+# When a release PR (from release-prepare.yml) lands on master, the merge commit
+# touches manifest.json and its subject is `chore(release): X.Y.Z` (squash) or a
+# `Merge pull request ... release/...` merge commit. This creates + pushes the bare
+# tag `X.Y.Z` at that commit, which fires the existing tag-triggered release.yml to
+# build and publish the GitHub Release. It does NOT build or release anything itself.
+#
+# No self-trigger: the tag push targets a tag ref, not `master`, so it does not
+# re-run this `push: branches: [master]` workflow. Existing tags are skipped.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'manifest.json'
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: 🏷️ Tag release commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag when this is a release commit
+        run: |
+          set -euo pipefail
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          echo "Head commit: $COMMIT_MSG"
+
+          # Match squash merges (`chore(release): X.Y.Z`) and merge commits from a
+          # release/* branch. Anything else is a normal change - do nothing.
+          if ! echo "$COMMIT_MSG" | grep -qE '^chore\(release\): |^Merge pull request .* release/'; then
+            echo "Not a release commit - skipping."
+            exit 0
+          fi
+
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "manifest.json version: $VERSION"
+
+          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+            echo "Tag ${VERSION} already exists - skipping."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+          echo "Pushed tag ${VERSION} - release.yml will build and publish it." >> "$GITHUB_STEP_SUMMARY"
