@@ -1,6 +1,6 @@
 # Agentage Galaxy
 
-> Your vault, in three dimensions.
+> Fly through your vault as a living, rotating 3D galaxy of notes.
 
 [![Install in Obsidian](https://img.shields.io/badge/Install-Obsidian-7c3aed.svg?logo=obsidian&logoColor=white)](obsidian://show-plugin?id=agentage-galaxy)
 [![Release](https://img.shields.io/github/v/release/agentage/obsidian-galaxy?sort=semver&label=release)](https://github.com/agentage/obsidian-galaxy/releases/latest)
@@ -8,11 +8,18 @@
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed.svg)](https://obsidian.md)
 [![agentage.io](https://img.shields.io/badge/by-agentage.io-e0a234.svg)](https://agentage.io)
 
-See your vault as a 3D, rotating force-graph. Notes are nodes, `[[links]]` are edges, and
-folders form colored clusters you can search, filter, and orbit. Click the **brain** ribbon
-icon and fly through your knowledge.
+Turn your Obsidian vault into a cinematic 3D force-graph you can fly through: notes are
+nodes, `[[links]]` are edges, and folders form colored clusters you can search, filter, and
+orbit. Click the **brain** ribbon icon and take off. Actively maintained, with weekly releases.
 
 ![Agentage Galaxy: a rotating 3D force-graph of an Obsidian vault](docs/demo.gif)
+
+## Why Agentage Galaxy?
+
+- **Actively maintained** - weekly releases, with new features shipping now.
+- **Zero-config clustering** - folders, tags, and attachments form colored clusters on first open.
+- **The built-in graph, in 3D** - the same node kinds and filters, so there's nothing new to learn.
+- **100% local** - a pure offline visualization of the files you own. Zero network calls.
 
 ## Install
 
@@ -37,6 +44,7 @@ Then click the **brain** icon in the left ribbon (or run the **Open 3D graph** c
 - **Auto-clustered by folder, zero config** - every top-level folder gets its own color, so
   the structure of your vault pops on first open. Tags, attachments, and unresolved `[[links]]`
   each form their own colored group. No `path:`/`tag:` rules to hand-write.
+- **Tags as nodes** - flip the Tags toggle and every `#tag` becomes a hub linking its notes.
 - **Size by connections** - your hub notes are visibly the biggest stars.
 - **It's the built-in graph view, in 3D** - the same node kinds and the same filters (search,
   tags, attachments, existing-files-only, orphans), so there's nothing new to learn.
@@ -47,6 +55,13 @@ Then click the **brain** icon in the left ribbon (or run the **Open 3D graph** c
 - **100% local** - a pure offline visualization of the files you own. Zero network calls.
 
 ![A vault rendered as a galaxy of colored, link-sized clusters](docs/galaxy.png)
+
+## Roadmap
+
+- [ ] First-person fly-through camera
+- [ ] Save camera + layout between sessions
+- [ ] Vault timelapse animation
+- [ ] Obsidian Canvas file support
 
 ## Privacy
 
