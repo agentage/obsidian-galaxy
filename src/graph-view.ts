@@ -19,6 +19,8 @@ export class Memory3DView extends ItemView {
   private host: Memory3DHost;
   private graphHost!: HTMLElement;
   private readonly rebuild = debounce(() => this.refreshData(), 400, true);
+  // Persist the camera at most every 2s while navigating (leading edge off), plus on close.
+  private readonly persistCamera = debounce(() => this.saveCamera(), 2000, false);
 
   constructor(leaf: WorkspaceLeaf, host: Memory3DHost) {
     super(leaf);
@@ -57,7 +59,9 @@ export class Memory3DView extends ItemView {
 
     this.renderer = createGraphRenderer(this.graphHost, this.renderOptions());
     this.renderer.onNodeClick((node) => this.openNode(node));
+    this.renderer.onCameraChange(() => this.persistCamera());
     this.refreshData();
+    this.restoreCamera();
 
     // 3d-force-graph has no internal ResizeObserver and defaults the canvas to window
     // size, so measure the actual pane once layout is ready and on every resize. A bare
@@ -73,8 +77,25 @@ export class Memory3DView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.persistCamera.cancel();
+    this.saveCamera();
     this.renderer?.destroy();
     this.renderer = undefined;
+  }
+
+  // Restore the saved camera on open when enabled; corrupt/missing state -> default fit.
+  private restoreCamera(): void {
+    if (!this.host.settings.restoreCamera) return;
+    const saved = this.host.settings.viewState.camera;
+    if (saved) this.renderer?.applyCameraState(saved);
+  }
+
+  private saveCamera(): void {
+    if (!this.renderer || !this.host.settings.restoreCamera) return;
+    const camera = this.renderer.getCameraState();
+    if (!camera) return;
+    this.host.settings.viewState.camera = camera;
+    void this.host.saveSettings();
   }
 
   onResize(): void {

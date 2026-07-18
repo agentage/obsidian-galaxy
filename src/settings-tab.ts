@@ -26,6 +26,11 @@ export class Memory3DSettingTab extends PluginSettingTab {
           },
           { name: 'Show labels', control: { type: 'toggle', key: 'showLabels' } },
           { name: 'Show arrows', control: { type: 'toggle', key: 'showArrows' } },
+          {
+            name: 'Restore camera between sessions',
+            desc: 'Reopen the graph where you left it instead of the default fly-in.',
+            control: { type: 'toggle', key: 'restoreCamera' },
+          },
         ],
       },
       {
@@ -105,6 +110,15 @@ export class Memory3DSettingTab extends PluginSettingTab {
         save();
       })
     );
+    new Setting(containerEl)
+      .setName('Restore camera between sessions')
+      .setDesc('Reopen the graph where you left it instead of the default fly-in.')
+      .addToggle((t) =>
+        t.setValue(s.restoreCamera).onChange((v) => {
+          s.restoreCamera = v;
+          save();
+        })
+      );
 
     new Setting(containerEl).setName('Filters').setHeading();
     new Setting(containerEl).setName('Tags').addToggle((t) =>

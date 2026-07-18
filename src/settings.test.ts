@@ -31,4 +31,20 @@ describe('mergeSettings', () => {
     expect(() => mergeSettings(42)).not.toThrow();
     expect(mergeSettings('nonsense')).toEqual(DEFAULT_SETTINGS);
   });
+
+  it('defaults restoreCamera on and camera to null', () => {
+    const merged = mergeSettings({});
+    expect(merged.restoreCamera).toBe(true);
+    expect(merged.viewState.camera).toBeNull();
+  });
+
+  it('restores a valid persisted camera', () => {
+    const camera = { position: { x: 1, y: 2, z: 3 }, target: { x: 0, y: 0, z: 0 } };
+    expect(mergeSettings({ viewState: { camera } }).viewState.camera).toEqual(camera);
+  });
+
+  it('drops a corrupt persisted camera to null', () => {
+    const merged = mergeSettings({ viewState: { camera: { position: { x: 1 } } } });
+    expect(merged.viewState.camera).toBeNull();
+  });
 });

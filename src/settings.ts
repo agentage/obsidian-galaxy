@@ -1,5 +1,12 @@
 import type { GraphFilters, GraphForces } from './types';
 import { DEFAULT_FILTERS } from './types';
+import { parseCameraState, type CameraState } from './camera-state';
+
+// Transient per-vault view state persisted alongside settings (namespaced so it never
+// collides with a live-tuning setting). Camera is restored on view open when enabled.
+export interface ViewState {
+  camera: CameraState | null;
+}
 
 // Persisted plugin settings: the built-in graph view's filters (verbatim) + force
 // tuning + 3D display/rotation. Forces keep the built-in's knobs but use
@@ -14,6 +21,8 @@ export interface Memory3DSettings {
   showLabels: boolean;
   autoRotate: boolean;
   rotateSpeed: number;
+  restoreCamera: boolean;
+  viewState: ViewState;
 }
 
 export const DEFAULT_FORCES: GraphForces = {
@@ -32,9 +41,12 @@ export const DEFAULT_SETTINGS: Memory3DSettings = {
   showLabels: true,
   autoRotate: true,
   rotateSpeed: 1.2,
+  restoreCamera: true,
+  viewState: { camera: null },
 };
 
-// Tolerant merge so older/partial data.json never crashes onload.
+// Tolerant merge so older/partial data.json never crashes onload. A corrupt camera blob
+// is dropped to null (default framing) rather than restored.
 export const mergeSettings = (raw: unknown): Memory3DSettings => {
   const r = (raw ?? {}) as Partial<Memory3DSettings>;
   return {
@@ -46,5 +58,7 @@ export const mergeSettings = (raw: unknown): Memory3DSettings => {
     showLabels: r.showLabels ?? DEFAULT_SETTINGS.showLabels,
     autoRotate: r.autoRotate ?? DEFAULT_SETTINGS.autoRotate,
     rotateSpeed: r.rotateSpeed ?? DEFAULT_SETTINGS.rotateSpeed,
+    restoreCamera: r.restoreCamera ?? DEFAULT_SETTINGS.restoreCamera,
+    viewState: { camera: parseCameraState(r.viewState?.camera) },
   };
 };
