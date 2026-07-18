@@ -25,7 +25,8 @@ Friday 20:00 Prague cron ┐
    hour is 20 proceed (the other exits 0 silently; dispatch bypasses the gate). It:
    - skips if an open `release/*` PR already exists;
    - skips (exit 0, no PR) if there are no releasable commits since the last tag - only
-     `docs:` / `chore:` / `ci:` do not count;
+     `docs:` / `chore:` / `ci:` do not count, EXCEPT `chore(deps*):` dependency bumps,
+     which release as a patch (they ship in the bundle);
    - picks the bump when `auto`: any `feat:` -> minor, any `!` / `BREAKING CHANGE` ->
      major, else patch;
    - runs `npm run verify`;

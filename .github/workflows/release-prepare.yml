@@ -122,19 +122,22 @@ jobs:
           SUBJECTS=$(git log $RANGE --no-merges --pretty=%s)
           BODIES=$(git log $RANGE --no-merges --pretty=%B)
 
-          # Releasable = any commit whose type is NOT docs/chore/ci
-          # (chore(release) is a chore, so it is already excluded). Bare-version
-          # subjects (legacy manual release commits like `0.2.0 (#28)`) do not count.
+          # Releasable = any commit whose type is NOT docs/chore/ci, PLUS dependency
+          # bumps (chore(deps*): dependabot merges ship in the bundle, so they release
+          # as a patch). chore(release) stays excluded. Bare-version subjects (legacy
+          # manual release commits like `0.2.0 (#28)`) do not count.
           if [ -n "$SUBJECTS" ]; then
-            RELEASABLE=$(printf '%s\n' "$SUBJECTS" \
+            NON_CHORE=$(printf '%s\n' "$SUBJECTS" \
               | grep -vE '^(docs|chore|ci)(\([^)]*\))?!?:' \
               | grep -vcE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+            DEPS=$(printf '%s\n' "$SUBJECTS" | grep -cE '^chore\(deps' || true)
+            RELEASABLE=$((NON_CHORE + DEPS))
           else
             RELEASABLE=0
           fi
 
           if [ "$RELEASABLE" -eq 0 ]; then
-            echo "No releasable commits since ${LAST_TAG:-repo start} (only docs/chore/ci). Nothing to release."
+            echo "No releasable commits since ${LAST_TAG:-repo start} (only docs/ci/non-deps chore). Nothing to release."
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
