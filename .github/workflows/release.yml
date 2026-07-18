@@ -75,6 +75,48 @@ jobs:
             manifest.json
             styles.css
 
+      - name: Build release body from CHANGELOG.md
+        id: notes
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+
+          # Extract this version's section from CHANGELOG.md (written by the
+          # release-prepare workflow). Empty extraction -> GitHub-generated notes
+          # take over via generate_release_notes below.
+          SECTION=$(awk -v ver="$TAG" '
+            $0 ~ "^## \\[" ver "\\]" { grab=1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md 2>/dev/null || true)
+          SECTION=$(printf '%s' "$SECTION" | sed -e 's/[[:space:]]*$//')
+
+          {
+            echo "**Agentage Galaxy ${TAG}** - see your Obsidian vault as a 3D, rotating force-graph."
+            echo ""
+            if [ -n "$SECTION" ]; then
+              echo "$SECTION"
+              echo ""
+            fi
+            echo "### Install (manual)"
+            echo "Download \`main.js\`, \`manifest.json\`, and \`styles.css\` below into"
+            echo "\`<your-vault>/.obsidian/plugins/agentage-galaxy/\`, then enable"
+            echo "**Agentage Galaxy** under Settings -> Community plugins."
+            echo ""
+            echo "### Install (BRAT)"
+            echo "Add \`agentage/obsidian-galaxy\` in the BRAT plugin."
+            echo ""
+            echo "See the [README](https://github.com/${{ github.repository }}#readme) for details."
+          } > release-body.md
+
+          if [ -n "$SECTION" ]; then
+            echo "have_notes=true" >> "$GITHUB_OUTPUT"
+            echo "Using CHANGELOG.md section for $TAG."
+          else
+            echo "have_notes=false" >> "$GITHUB_OUTPUT"
+            echo "No CHANGELOG.md section for $TAG - falling back to GitHub-generated notes."
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -82,18 +124,8 @@ jobs:
           name: ${{ steps.ver.outputs.tag }}
           draft: ${{ github.event.inputs.draft == 'true' }}
           prerelease: ${{ contains(steps.ver.outputs.tag, '-') }}
-          body: |
-            **Agentage Galaxy ${{ steps.ver.outputs.tag }}** - see your Obsidian vault as a 3D, rotating force-graph.
-
-            ### Install (manual)
-            Download `main.js`, `manifest.json`, and `styles.css` below into
-            `<your-vault>/.obsidian/plugins/agentage-galaxy/`, then enable
-            **Agentage Galaxy** under Settings → Community plugins.
-
-            ### Install (BRAT)
-            Add `agentage/obsidian-galaxy` in the BRAT plugin.
-
-            See the [README](https://github.com/${{ github.repository }}#readme) for details.
+          generate_release_notes: ${{ steps.notes.outputs.have_notes != 'true' }}
+          body_path: release-body.md
           files: |
             main.js
             manifest.json
