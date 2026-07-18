@@ -3,6 +3,8 @@ import type { ForceGraph3DInstance } from '3d-force-graph';
 import SpriteText from 'three-spritetext';
 import type { GraphData, GraphForces, GraphNode, RenderOptions } from './types';
 import { serializeCameraState, type CameraState } from './camera-state';
+import { spotlightIds, tagNodeVal, tagUsage } from './tag-hub';
+import { buildTagHub, type DimMaterial } from './tag-hub-mesh';
 
 // Pure 3D renderer over 3d-force-graph. No Obsidian import -> reused verbatim by the
 // browser harness. The Obsidian view feeds it theme colors; the harness feeds a fixed
@@ -20,6 +22,19 @@ const REPEL_MAX_RANGE = 300; // cap charge range so orphans don't fly off to inf
 const NODE_RESOLUTION = 18; // max sphere segments (smooth balls for small graphs)
 const NODE_RESOLUTION_MIN = 4; // floor for huge clouds / far zoom (still reads as round)
 const LINK_OPACITY = 0.5; // base link visibility
+const DIM_NODE_ALPHA = 0.12; // spotlit-out note spheres fade to a faint ghost
+const DIM_LINK_ALPHA = 0.05; // spotlit-out links fade almost fully
+const DIM_HUB_FACTOR = 0.15; // spotlit-out tag hubs keep only a sliver of their opacity
+
+// Convert a #rrggbb hex to an rgba() string so we can dim a node/link via its alpha.
+const withAlpha = (hex: string, alpha: number): string => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+};
+
+// Links carry string endpoints before the layout resolves them into node objects.
+const endId = (end: string | { id?: string }): string =>
+  typeof end === 'string' ? end : (end.id ?? '');
 
 // Adaptive level-of-detail: every node is a UV sphere whose triangle count scales with
 // its segment resolution, so a big cloud at 18 segments is millions of polygons. Pick a
@@ -100,9 +115,28 @@ export const createGraphRenderer = (
   let currentRes = NODE_RESOLUTION; // last applied sphere resolution (avoid needless rebuilds)
   let resScheduled = false; // throttle LOD recompute to one per frame
   let destroyed = false; // guard queued frames after teardown
+  let spotlight: Set<string> | null = null; // ids kept bright while a tag is focused
+  let spotlightSource: string | null = null; // the tag driving the current spotlight
+  const tagMaterials = new Map<string, DimMaterial[]>(); // per-tag hub materials to dim
 
-  const nodeColorFn = (n: object): string =>
-    (n as GraphNode & { __color?: string }).__color ?? colorForKind(n as GraphNode, opts);
+  const baseColor = (node: GraphNode & { __color?: string }): string =>
+    node.__color ?? colorForKind(node, opts);
+
+  // Note/attachment/unresolved spheres are lib-drawn: dim via a low-alpha color when a
+  // spotlight is active and this node is outside it (tag hubs dim via their materials).
+  const nodeColorFn = (n: object): string => {
+    const node = n as GraphNode & { __color?: string };
+    const color = baseColor(node);
+    return spotlight && !spotlight.has(node.id) ? withAlpha(color, DIM_NODE_ALPHA) : color;
+  };
+
+  // Fade links whose endpoints aren't both inside the spotlight.
+  const linkColorFn = (l: object): string => {
+    if (!spotlight) return opts.palette.link;
+    const link = l as { source: string | { id?: string }; target: string | { id?: string } };
+    const lit = spotlight.has(endId(link.source)) && spotlight.has(endId(link.target));
+    return lit ? opts.palette.link : withAlpha(opts.palette.link, DIM_LINK_ALPHA);
+  };
 
   const graph: ForceGraph3DInstance = new ForceGraph3D(container, { controlType: 'orbit' })
     .backgroundColor(opts.palette.background)
@@ -111,7 +145,7 @@ export const createGraphRenderer = (
     .nodeVal((n) => (n as GraphNode).val)
     .nodeColor(nodeColorFn)
     .nodeLabel((n) => (n as GraphNode).name)
-    .linkColor(() => opts.palette.link)
+    .linkColor(linkColorFn)
     .linkWidth(() => opts.linkThickness)
     .linkOpacity(LINK_OPACITY)
     .linkDirectionalArrowLength(() => (opts.showArrows ? 3.5 : 0))
@@ -124,7 +158,13 @@ export const createGraphRenderer = (
         fitView();
       }
     })
-    .onNodeClick((n) => clickCb(n as GraphNode));
+    .onNodeClick((n) => {
+      const node = n as GraphNode;
+      // A tag click drives the spotlight; other kinds fall through to the host (open note).
+      if (node.kind === 'tag') toggleSpotlight(node);
+      else clickCb(node);
+    })
+    .onBackgroundClick(() => clearSpotlight());
 
   // e2e/debug affordance: expose the underlying instance on the container so headless
   // capture scripts can drive the camera. Harmless in normal use.
@@ -172,16 +212,64 @@ export const createGraphRenderer = (
     );
   };
 
-  const applyLabels = (): void => {
-    graph.nodeThreeObjectExtend(true).nodeThreeObject((n) => {
-      if (!opts.showLabels) return undefined as unknown as never;
-      const node = n as GraphNode;
-      const sprite = new SpriteText(node.name);
-      sprite.color = opts.palette.text;
-      sprite.textHeight = 3;
-      sprite.position.y = nodeRadius(node, opts.nodeSize) + 3; // sit just above the ball
-      return sprite;
+  // Tag nodes REPLACE the default sphere with a distinct hub object; every other kind
+  // EXTENDS its sphere with just a label sprite.
+  const tagObject = (node: GraphNode): object => {
+    const hub = buildTagHub({
+      color: baseColor(node),
+      radius: nodeRadius(node, opts.nodeSize),
+      textColor: opts.palette.text,
+      label: opts.showLabels ? node.name : undefined,
     });
+    tagMaterials.set(node.id, hub.materials);
+    return hub.object;
+  };
+
+  const labelObject = (node: GraphNode): object | undefined => {
+    if (!opts.showLabels) return undefined;
+    const sprite = new SpriteText(node.name);
+    sprite.color = opts.palette.text;
+    sprite.textHeight = 3;
+    sprite.position.y = nodeRadius(node, opts.nodeSize) + 3; // sit just above the ball
+    return sprite;
+  };
+
+  const applyNodeObjects = (): void => {
+    tagMaterials.clear(); // re-populated as the accessor rebuilds every node object
+    graph
+      .nodeThreeObjectExtend((n) => (n as GraphNode).kind !== 'tag')
+      .nodeThreeObject((n) => {
+        const node = n as GraphNode;
+        return (node.kind === 'tag' ? tagObject(node) : labelObject(node)) as never;
+      });
+  };
+
+  // Re-evaluate every dimmable channel: lib spheres/links via their accessors, tag hubs
+  // via their own materials.
+  const refreshHighlight = (): void => {
+    for (const [id, mats] of tagMaterials) {
+      const dim = spotlight != null && !spotlight.has(id);
+      for (const m of mats) m.material.opacity = dim ? m.base * DIM_HUB_FACTOR : m.base;
+    }
+    graph.nodeColor(nodeColorFn).linkColor(linkColorFn);
+  };
+
+  const clearSpotlight = (): void => {
+    if (!spotlight) return;
+    spotlight = null;
+    spotlightSource = null;
+    refreshHighlight();
+  };
+
+  // Clicking the active tag again clears; a different tag switches focus.
+  const toggleSpotlight = (node: GraphNode): void => {
+    if (spotlightSource === node.id) {
+      clearSpotlight();
+      return;
+    }
+    spotlight = spotlightIds(node);
+    spotlightSource = node.id;
+    refreshHighlight();
   };
 
   const applyForces = (f: GraphForces): void => {
@@ -206,7 +294,7 @@ export const createGraphRenderer = (
     controls.zoomToCursor = true; // wheel zooms toward the cursor, not the scene center
   };
 
-  applyLabels();
+  applyNodeObjects();
   applyForces(opts.forces);
   applyControls();
 
@@ -215,6 +303,8 @@ export const createGraphRenderer = (
       fitted = false; // re-frame once after the new layout settles
       hasLinks = data.links.length > 0;
       nodeCount = data.nodes.length; // drives the LOD floor for big clouds
+      spotlight = null; // new data invalidates any prior focus
+      spotlightSource = null;
       // Assign a categorical color per group (folder / kind), like the large-graph
       // example's nodeAutoColorBy. Stable across renders via sorted group order.
       const groups = [...new Set(data.nodes.map(groupOf))].sort();
@@ -222,6 +312,8 @@ export const createGraphRenderer = (
       groups.forEach((gp, i) => colorByGroup.set(gp, CATEGORICAL[i % CATEGORICAL.length]));
       for (const node of data.nodes) {
         (node as GraphNode & { __color?: string }).__color = colorByGroup.get(groupOf(node));
+        // Tag hubs render larger, scaled by how many notes carry the tag.
+        if (node.kind === 'tag') node.val = tagNodeVal(tagUsage(node));
       }
       graph.graphData({ nodes: data.nodes, links: data.links });
       updateResolution(); // size changed -> reset detail before the layout settles
@@ -232,10 +324,10 @@ export const createGraphRenderer = (
         .backgroundColor(opts.palette.background)
         .nodeRelSize(opts.nodeSize)
         .nodeColor(nodeColorFn)
-        .linkColor(() => opts.palette.link)
+        .linkColor(linkColorFn)
         .linkWidth(() => opts.linkThickness)
         .linkDirectionalArrowLength(() => (opts.showArrows ? 3.5 : 0));
-      applyLabels();
+      applyNodeObjects();
       applyForces(opts.forces);
       applyControls();
       graph.d3ReheatSimulation();
