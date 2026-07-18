@@ -2,6 +2,7 @@ import ForceGraph3D from '3d-force-graph';
 import type { ForceGraph3DInstance } from '3d-force-graph';
 import SpriteText from 'three-spritetext';
 import type { GraphData, GraphForces, GraphNode, RenderOptions } from './types';
+import { serializeCameraState, type CameraState } from './camera-state';
 
 // Pure 3D renderer over 3d-force-graph. No Obsidian import -> reused verbatim by the
 // browser harness. The Obsidian view feeds it theme colors; the harness feeds a fixed
@@ -80,6 +81,9 @@ export interface GraphRenderer {
   resize(width: number, height: number): void;
   zoomToFit(padding?: number): void;
   onNodeClick(cb: (node: GraphNode) => void): void;
+  getCameraState(): CameraState | null;
+  applyCameraState(state: CameraState): void;
+  onCameraChange(cb: () => void): void;
   destroy(): void;
 }
 
@@ -89,6 +93,7 @@ export const createGraphRenderer = (
 ): GraphRenderer => {
   let opts = initial;
   let clickCb: (node: GraphNode) => void = () => {};
+  let cameraChangeCb: () => void = () => {}; // fires on wheel/drag/auto-rotate for persistence
   let fitted = false; // frame the camera once per data load, then leave it to the user
   let hasLinks = false; // fit to connected nodes when any exist, else to everything
   let nodeCount = 0; // current graph size, drives the LOD floor
@@ -151,9 +156,13 @@ export const createGraphRenderer = (
       if (!destroyed) updateResolution();
     });
   };
+  const onControlsChange = (): void => {
+    scheduleResolution();
+    cameraChangeCb();
+  };
   (
     graph.controls() as { addEventListener?: (e: string, cb: () => void) => void }
-  ).addEventListener?.('change', scheduleResolution);
+  ).addEventListener?.('change', onControlsChange);
 
   // Default framing: fit the connected cluster (lone orphans, flung to the periphery
   // by repulsion, shouldn't shrink the whole view); fall back to all nodes.
@@ -239,6 +248,19 @@ export const createGraphRenderer = (
     },
     onNodeClick(cb: (node: GraphNode) => void): void {
       clickCb = cb;
+    },
+    getCameraState(): CameraState | null {
+      const position = (graph.camera() as { position?: unknown }).position;
+      const target = (graph.controls() as { target?: unknown }).target;
+      return serializeCameraState(position, target);
+    },
+    applyCameraState(state: CameraState): void {
+      // Suppress the one-time zoomToFit so the restored view isn't clobbered on engine stop.
+      fitted = true;
+      graph.cameraPosition(state.position, state.target, 0);
+    },
+    onCameraChange(cb: () => void): void {
+      cameraChangeCb = cb;
     },
     destroy(): void {
       destroyed = true;
