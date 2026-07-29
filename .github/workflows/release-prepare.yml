@@ -1,16 +1,23 @@
 name: Prepare Release
 
-# Opens a release PR from conventional commits since the last tag.
+# The fully automated Friday release train: wait for the org dependabot triage
+# (.github-private) to finish merging this week's bumps, open the release PR from
+# conventional commits since the last tag, merge it, tag, and dispatch release.yml.
+# No human step on the happy path.
 #  - schedule: every Friday 20:00 Europe/Prague. GitHub cron is UTC-only and Prague
 #    shifts CEST/CET, so BOTH UTC slots are scheduled (18:00 UTC = 20:00 CEST summer,
 #    19:00 UTC = 20:00 CET winter) and a gate job runs the rest only when the local
-#    Prague hour is actually 20 (the wrong-DST run exits 0 silently).
+#    Prague hour is actually 20 (the wrong-DST run exits 0 silently). Dependabot opens
+#    its weekly PRs at 18:00 Prague, two hours earlier; the org triage agent merges
+#    them - this workflow never merges dependabot PRs itself.
 #  - workflow_dispatch: pick a bump_type (auto/patch/minor/major) + optional auto_merge
 #    (bypasses the hour gate).
 #
-# It bumps the version WITHOUT tagging (the tag is created after merge by
-# auto-tag-on-merge.yml, which fires the tag-triggered release.yml). Nothing is
-# published from this workflow.
+# GITHUB_TOKEN caveats this workflow works around: its branch pushes don't fire
+# pr-validation on the release PR (the in-workflow `npm run verify` here plus the one
+# in release.yml are the CI gates), and its merges don't fire auto-tag-on-merge.yml -
+# so after merging, this workflow tags and dispatches release.yml itself (auto-tag
+# stays as the path for manually merged release PRs; both skip existing tags).
 on:
   schedule:
     - cron: '0 18 * * 5'
@@ -36,6 +43,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   prague-gate:
@@ -65,9 +73,37 @@ jobs:
             echo "go=false" >> "$GITHUB_OUTPUT"
           fi
 
+  dependabot-quiescence:
+    name: 🤖 Wait for dependabot triage to finish
+    needs: prague-gate
+    if: needs.prague-gate.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Wait until this repo has no fresh open dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Dependabot merging is owned by the org triage automation
+          # (.github-private dependabot-triage.yml -> claude-triage-executor):
+          # it starts at the dependabot window (18:00 Prague) and merges/fixes
+          # PRs with judgment. This job only delays the train while that agent
+          # may still be working, so this week's bumps ride this week's release.
+          # PRs still open after the wait were deliberately left by triage
+          # (breaking/suspicious) - the train departs without them.
+          for i in $(seq 1 45); do
+            OPEN=$(gh pr list -R "$REPO" --author "app/dependabot" --state open --json number --jq 'length')
+            [ "$OPEN" = "0" ] && { echo "No open dependabot PRs - proceeding."; exit 0; }
+            echo "poll $i: $OPEN open dependabot PR(s), waiting for triage..."
+            sleep 60
+          done
+          echo "Dependabot PR(s) still open after wait - triage left them; releasing without them." | tee -a "$GITHUB_STEP_SUMMARY"
+
   prepare-release:
     name: 🚝 Prepare release PR
-    needs: prague-gate
+    needs: [prague-gate, dependabot-quiescence]
     if: needs.prague-gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -226,17 +262,13 @@ jobs:
           ### Changes
           ${NOTES}
 
-          ### Checklist
-          - [ ] Review the changelog
-          - [ ] Verify version numbers are correct (package.json, manifest.json, versions.json)
-          - [ ] Merge when ready to release
-
           ---
 
-          Once merged, this will automatically:
-          1. Create the git tag \`${VERSION}\`
-          2. Trigger the release workflow
-          3. Publish to the Obsidian community store via GitHub release
+          Scheduled runs merge this PR automatically (in-workflow verify already passed),
+          then tag \`${VERSION}\` and dispatch the release workflow, which publishes the
+          GitHub release the Obsidian community store installs from. If this PR is still
+          open, the automated merge did not happen - merge it manually and
+          auto-tag-on-merge.yml will finish the job.
           EOF
 
           PR_URL=$(gh pr create \
@@ -252,7 +284,8 @@ jobs:
           gh pr edit "$PR_URL" --add-label "release" 2>/dev/null || true
 
       - name: Auto-merge release PR
-        if: steps.pr.outputs.pr_url && github.event.inputs.auto_merge == 'true'
+        id: merge
+        if: steps.pr.outputs.pr_url && (github.event_name == 'schedule' || github.event.inputs.auto_merge == 'true')
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
@@ -267,6 +300,34 @@ jobs:
               exit 1
             fi
           fi
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      - name: Tag + dispatch release
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+        run: |
+          set -euo pipefail
+          # A GITHUB_TOKEN merge never fires auto-tag-on-merge.yml, so finish the
+          # chain here. Skips cleanly if a tag already appeared (PAT-merge race).
+          VERSION="${{ steps.bump.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists - auto-tag handled it."
+            exit 0
+          fi
+          MERGE_SHA=""
+          for i in $(seq 1 10); do
+            MERGE_SHA=$(gh pr view "$PR_URL" --json mergeCommit --jq '.mergeCommit.oid // empty')
+            [ -n "$MERGE_SHA" ] && break
+            sleep 5
+          done
+          [ -n "$MERGE_SHA" ] || { echo "::error::merge commit not found for $PR_URL"; exit 1; }
+          git fetch origin master
+          git tag "${VERSION}" "${MERGE_SHA}"
+          git push origin "${VERSION}" || echo "tag push raced auto-tag - fine"
+          gh workflow run release.yml --ref master --repo "${{ github.repository }}"
+          echo "Tagged ${VERSION} at ${MERGE_SHA} and dispatched release.yml." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summary
         if: always()
