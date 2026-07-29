@@ -3,11 +3,12 @@ name: Auto-tag Release
 # When a release PR (from release-prepare.yml) lands on master, the merge commit
 # touches manifest.json and its subject is `chore(release): X.Y.Z` (squash) or a
 # `Merge pull request ... release/...` merge commit. This creates + pushes the bare
-# tag `X.Y.Z` at that commit, which fires the existing tag-triggered release.yml to
-# build and publish the GitHub Release. It does NOT build or release anything itself.
+# tag `X.Y.Z` at that commit, then dispatches release.yml to build and publish the
+# GitHub Release. It does NOT build or release anything itself.
 #
-# No self-trigger: the tag push targets a tag ref, not `master`, so it does not
-# re-run this `push: branches: [master]` workflow. Existing tags are skipped.
+# The explicit dispatch is required: pushes made with the workflow GITHUB_TOKEN never
+# trigger other workflows, so the tag push alone would strand the tag with no release
+# (that is how 0.2.1 got stuck). workflow_dispatch is exempt from that rule.
 on:
   push:
     branches: [master]
@@ -16,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   tag:
@@ -30,6 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Tag when this is a release commit
+        id: tag
         run: |
           set -euo pipefail
           COMMIT_MSG=$(git log -1 --pretty=%s)
@@ -54,4 +57,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${VERSION}"
           git push origin "${VERSION}"
-          echo "Pushed tag ${VERSION} - release.yml will build and publish it." >> "$GITHUB_STEP_SUMMARY"
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
+          echo "Pushed tag ${VERSION} - dispatching release.yml to build and publish it." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch release workflow
+        if: steps.tag.outputs.tagged == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref master --repo "${{ github.repository }}"
