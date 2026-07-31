@@ -4,14 +4,12 @@ name: Prepare Release
 # (.github-private) to finish merging this week's bumps, open the release PR from
 # conventional commits since the last tag, merge it, tag, and dispatch release.yml.
 # No human step on the happy path.
-#  - schedule: every Friday 20:00 Europe/Prague. GitHub cron is UTC-only and Prague
-#    shifts CEST/CET, so BOTH UTC slots are scheduled (18:00 UTC = 20:00 CEST summer,
-#    19:00 UTC = 20:00 CET winter) and a gate job runs the rest only when the local
-#    Prague hour is actually 20 (the wrong-DST run exits 0 silently). Dependabot opens
-#    its weekly PRs at 18:00 Prague, two hours earlier; the org triage agent merges
-#    them - this workflow never merges dependabot PRs itself.
-#  - workflow_dispatch: pick a bump_type (auto/patch/minor/major) + optional auto_merge
-#    (bypasses the hour gate).
+#  - schedule: every Friday 19:00 UTC (L0 slot of the estate train; the whole train
+#    runs on UTC - GitHub crons fire late by up to 1-2h, so a late run just departs
+#    late instead of being hour-gated away). Dependabot opens its weekly PRs at
+#    16:00 UTC and org triage merges them from 17:00 - this workflow never merges
+#    dependabot PRs itself.
+#  - workflow_dispatch: pick a bump_type (auto/patch/minor/major) + optional auto_merge.
 #
 # GITHUB_TOKEN caveats this workflow works around: its branch pushes don't fire
 # pr-validation on the release PR (the in-workflow `npm run verify` here plus the one
@@ -20,7 +18,6 @@ name: Prepare Release
 # stays as the path for manually merged release PRs; both skip existing tags).
 on:
   schedule:
-    - cron: '0 18 * * 5'
     - cron: '0 19 * * 5'
   workflow_dispatch:
     inputs:
@@ -46,37 +43,8 @@ permissions:
   actions: write
 
 jobs:
-  prague-gate:
-    name: 🕗 Friday 20:00 Prague gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      go: ${{ steps.gate.outputs.go }}
-    steps:
-      - name: Check local Prague hour (DST-proof)
-        id: gate
-        run: |
-          # Both UTC crons (18:00 + 19:00 Fri) target Friday 20:00 Europe/Prague;
-          # only the slot where the local hour is actually 20 proceeds, the other
-          # exits 0 silently. workflow_dispatch bypasses the gate.
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "workflow_dispatch - bypassing hour gate."
-            echo "go=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          HOUR=$(TZ=Europe/Prague date +%H)
-          if [ "$HOUR" = "20" ]; then
-            echo "Prague hour is 20 - proceeding."
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Prague hour is $HOUR, not 20 - wrong DST cron slot, skipping."
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          fi
-
   dependabot-quiescence:
     name: 🤖 Wait for dependabot triage to finish
-    needs: prague-gate
-    if: needs.prague-gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -88,7 +56,7 @@ jobs:
           set -euo pipefail
           # Dependabot merging is owned by the org triage automation
           # (.github-private dependabot-triage.yml -> claude-triage-executor):
-          # it starts at the dependabot window (18:00 Prague) and merges/fixes
+          # it starts at the dependabot window (16:00 UTC) and merges/fixes
           # PRs with judgment. This job only delays the train while that agent
           # may still be working, so this week's bumps ride this week's release.
           # PRs still open after the wait were deliberately left by triage
@@ -103,8 +71,7 @@ jobs:
 
   prepare-release:
     name: 🚝 Prepare release PR
-    needs: [prague-gate, dependabot-quiescence]
-    if: needs.prague-gate.outputs.go == 'true'
+    needs: [dependabot-quiescence]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
