@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.3] - 2026-08-07
+
+No significant changes
+
 ## [0.2.2] - 2026-08-01
 
 Looking at these commits, they are all CI/CD pipeline changes (automated release train, cron scheduling, workflow dispatch fixes). None of these changes affect the end-user experience of the Agentage Galaxy plugin itself.
