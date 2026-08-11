@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -31,3 +33,7 @@ jobs:
 
       - name: Verify
         run: npm run verify
+
+      # Kept from pr-validation.yml: `verify` does not include coverage.
+      - name: Test with coverage
+        run: npm run test:coverage
