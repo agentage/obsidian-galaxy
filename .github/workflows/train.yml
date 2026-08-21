@@ -1,21 +1,24 @@
 name: Prepare Release
 
-# The fully automated Friday release train: wait for the org dependabot triage
-# (.github-private) to finish merging this week's bumps, open the release PR from
-# conventional commits since the last tag, merge it, tag, and dispatch release.yml.
-# No human step on the happy path.
+# v2-lite direct-to-master release train: wait for the org dependabot triage
+# (.github-private) to finish merging this week's bumps, bump the version from
+# conventional commits since the last tag, commit straight to master (no
+# release/* branch, no PR), tag, and dispatch release.yml. No human step on the
+# happy path.
 #  - schedule: every Friday 19:00 UTC (L0 slot of the estate train; the whole train
 #    runs on UTC - GitHub crons fire late by up to 1-2h, so a late run just departs
 #    late instead of being hour-gated away). Dependabot opens its weekly PRs at
 #    16:00 UTC and org triage merges them from 17:00 - this workflow never merges
 #    dependabot PRs itself.
-#  - workflow_dispatch: pick a bump_type (auto/patch/minor/major) + optional auto_merge.
+#  - workflow_dispatch: pick a bump_type (auto/patch/minor/major). `auto_merge` is
+#    kept for input-schema compatibility with the old release-PR train but is now
+#    a no-op - there's no PR to gate, every run pushes directly.
 #
-# GITHUB_TOKEN caveats this workflow works around: its branch pushes don't fire
-# pr-validation on the release PR (the in-workflow `npm run verify` here plus the one
-# in release.yml are the CI gates), and its merges don't fire auto-tag-on-merge.yml -
-# so after merging, this workflow tags and dispatches release.yml itself (auto-tag
-# stays as the path for manually merged release PRs; both skip existing tags).
+# 2026-08-22 migration off the release-PR pattern: branch -> PR -> auto-merge ->
+# approve/poll broke 3 different ways in 3 weeks across the estate. This train now
+# pushes the release commit straight to master and fails closed instead - a push
+# failure is red (never forced), and the dispatched release.yml run is watched to
+# conclusion with the published GitHub release asserted before the job is green.
 on:
   schedule:
     - cron: '0 19 * * 5'
@@ -32,7 +35,7 @@ on:
           - minor
           - major
       auto_merge:
-        description: 'Auto-merge the release PR after CI passes'
+        description: 'Unused since the v2-lite direct-to-master migration (kept for input compatibility)'
         required: false
         default: false
         type: boolean
@@ -70,7 +73,7 @@ jobs:
           echo "Dependabot PR(s) still open after wait - triage left them; releasing without them." | tee -a "$GITHUB_STEP_SUMMARY"
 
   prepare-release:
-    name: 🚝 Prepare release PR
+    name: 🚝 Release direct to master
     needs: [dependabot-quiescence]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -90,24 +93,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check for an existing open release PR
-        id: check_pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          EXISTING=$(gh pr list --state open --json number,headRefName \
-            --jq '[.[] | select(.headRefName | startswith("release/"))] | .[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            echo "Open release PR #$EXISTING already exists, skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No open release PR."
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Detect releasable commits + bump type
         id: detect
-        if: steps.check_pr.outputs.skip != 'true'
         run: |
           set -euo pipefail
           # Highest semver tag, NOT `git describe`: historical tags were made on
@@ -164,12 +151,12 @@ jobs:
           echo "range=$RANGE" >> "$GITHUB_OUTPUT"
 
       - name: Verify (type-check + lint + format + test + build)
-        if: steps.check_pr.outputs.skip != 'true' && steps.detect.outputs.release == 'true'
+        if: steps.detect.outputs.release == 'true'
         run: npm run verify
 
       - name: Bump version (no tag)
         id: bump
-        if: steps.check_pr.outputs.skip != 'true' && steps.detect.outputs.release == 'true'
+        if: steps.detect.outputs.release == 'true'
         run: |
           set -euo pipefail
           # --no-git-tag-version: skip commit + tag; the `version` script still runs
@@ -181,7 +168,7 @@ jobs:
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes with Claude
-        if: steps.check_pr.outputs.skip != 'true' && steps.detect.outputs.release == 'true'
+        if: steps.detect.outputs.release == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -192,119 +179,100 @@ jobs:
           cat release-notes.md
 
       - name: Update CHANGELOG.md
-        if: steps.check_pr.outputs.skip != 'true' && steps.detect.outputs.release == 'true'
+        if: steps.detect.outputs.release == 'true'
         run: node scripts/update-changelog.mjs "${{ steps.bump.outputs.version }}" < release-notes.md
 
-      - name: Create release branch + PR
-        id: pr
-        if: steps.check_pr.outputs.skip != 'true' && steps.detect.outputs.release == 'true'
+      - name: Commit + push release directly to master
+        id: push
+        if: steps.detect.outputs.release == 'true'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.bump.outputs.version }}"
-          BRANCH="release/${VERSION}"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Re-auth so the push is authored by the PAT when present, which lets
-          # pr-validation fire on the release PR (GITHUB_TOKEN pushes are suppressed
-          # to prevent recursion). Falls back to GITHUB_TOKEN.
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
 
-          NOTES=$(cat release-notes.md)
           rm -f release-notes.md
 
-          git checkout -b "$BRANCH"
           git add -A
           git commit -m "chore(release): ${VERSION}"
-          git push origin "$BRANCH"
 
-          cat > pr-body.md <<EOF
-          ## Release ${VERSION}
+          # Rebase onto whatever landed on master since checkout, then push
+          # directly - no branch, no PR, no merge. A push failure is red, never
+          # forced.
+          git pull --rebase origin master
+          git push origin HEAD:master
 
-          This PR prepares the release of version ${VERSION}.
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          ### Changes
-          ${NOTES}
-
-          ---
-
-          Scheduled runs merge this PR automatically (in-workflow verify already passed),
-          then tag \`${VERSION}\` and dispatch the release workflow, which publishes the
-          GitHub release the Obsidian community store installs from. If this PR is still
-          open, the automated merge did not happen - merge it manually and
-          auto-tag-on-merge.yml will finish the job.
-          EOF
-
-          PR_URL=$(gh pr create \
-            --base master \
-            --head "$BRANCH" \
-            --title "chore(release): ${VERSION}" \
-            --body-file pr-body.md)
-          rm -f pr-body.md
-          echo "Opened $PR_URL"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-
-          gh label create release --color 0E8A16 --description "Automated release PR" 2>/dev/null || true
-          gh pr edit "$PR_URL" --add-label "release" 2>/dev/null || true
-
-      - name: Auto-merge release PR
-        id: merge
-        if: steps.pr.outputs.pr_url && (github.event_name == 'schedule' || github.event.inputs.auto_merge == 'true')
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ steps.pr.outputs.pr_url }}
-        run: |
-          # `--auto` waits for required checks; if the PR is already in a clean status
-          # (no required checks) GitHub rejects it, so fall back to a direct squash.
-          if ! OUT=$(gh pr merge "$PR_URL" --auto --squash 2>&1); then
-            echo "$OUT"
-            if echo "$OUT" | grep -q "clean status"; then
-              gh pr merge "$PR_URL" --squash
-            else
-              exit 1
-            fi
-          fi
-          echo "merged=true" >> "$GITHUB_OUTPUT"
-
-      - name: Tag + dispatch release
-        if: steps.merge.outputs.merged == 'true'
+      - name: Tag release
+        if: steps.push.outputs.version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ steps.pr.outputs.pr_url }}
         run: |
           set -euo pipefail
-          # A GITHUB_TOKEN merge never fires auto-tag-on-merge.yml, so finish the
-          # chain here. Skips cleanly if a tag already appeared (PAT-merge race).
-          VERSION="${{ steps.bump.outputs.version }}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
-            echo "Tag ${VERSION} already exists - auto-tag handled it."
-            exit 0
-          fi
-          MERGE_SHA=""
-          for i in $(seq 1 10); do
-            MERGE_SHA=$(gh pr view "$PR_URL" --json mergeCommit --jq '.mergeCommit.oid // empty')
-            [ -n "$MERGE_SHA" ] && break
-            sleep 5
-          done
-          [ -n "$MERGE_SHA" ] || { echo "::error::merge commit not found for $PR_URL"; exit 1; }
-          git fetch origin master
-          git tag "${VERSION}" "${MERGE_SHA}"
-          git push origin "${VERSION}" || echo "tag push raced auto-tag - fine"
+          VERSION="${{ steps.push.outputs.version }}"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Dispatch release workflow
+        if: steps.push.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.push.outputs.version }}"
+          # A GITHUB_TOKEN tag push never fires release.yml's tag trigger, so
+          # dispatch it explicitly (workflow_dispatch reads the already-pushed
+          # tag/manifest version - see release.yml's "Resolve release version").
           gh workflow run release.yml --ref master --repo "${{ github.repository }}"
-          echo "Tagged ${VERSION} at ${MERGE_SHA} and dispatched release.yml." >> "$GITHUB_STEP_SUMMARY"
+          echo "Tagged ${VERSION} and dispatched release.yml." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for release.yml + verify published release
+        if: steps.push.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.push.outputs.version }}"
+          DISPATCH_EPOCH=$(date -u +%s)
+
+          # gh workflow run doesn't return a run id, so poll gh run list for the
+          # release.yml run that appeared after our dispatch.
+          RUN_ID=""
+          for i in $(seq 1 18); do
+            sleep 10
+            RUN_ID=$(gh run list --repo "$REPO" --workflow=release.yml --branch master \
+              --json databaseId,createdAt --jq \
+              "[.[] | select((.createdAt | fromdateiso8601) >= ($DISPATCH_EPOCH - 15))] | .[0].databaseId // empty")
+            [ -n "$RUN_ID" ] && break
+            echo "poll $i: dispatched release.yml run not visible yet..."
+          done
+          [ -n "$RUN_ID" ] || { echo "::error::Could not find the dispatched release.yml run."; exit 1; }
+
+          echo "Watching release.yml run $RUN_ID to conclusion..."
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status
+
+          echo "Verifying GitHub release ${VERSION} was published with the expected assets..."
+          RELEASE_JSON=$(gh release view "$VERSION" --repo "$REPO" --json tagName,assets)
+          TAG=$(echo "$RELEASE_JSON" | jq -r '.tagName')
+          [ "$TAG" = "$VERSION" ] || { echo "::error::Release tag '$TAG' does not match expected '$VERSION'"; exit 1; }
+          for ASSET in main.js manifest.json styles.css; do
+            echo "$RELEASE_JSON" | jq -e --arg a "$ASSET" '.assets[] | select(.name == $a)' >/dev/null \
+              || { echo "::error::Release ${VERSION} is missing asset $ASSET"; exit 1; }
+          done
+          echo "Release ${VERSION} published with expected assets (main.js, manifest.json, styles.css)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summary
         if: always()
         run: |
-          if [ "${{ steps.check_pr.outputs.skip }}" = "true" ]; then
-            echo "## Skipped - open release PR already exists" >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.detect.outputs.release }}" != "true" ]; then
+          if [ "${{ steps.detect.outputs.release }}" != "true" ]; then
             echo "## Skipped - no releasable commits since the last tag" >> "$GITHUB_STEP_SUMMARY"
-          elif [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
-            echo "## Release PR opened" >> "$GITHUB_STEP_SUMMARY"
-            echo "Version: ${{ steps.bump.outputs.version }} (bump: ${{ steps.detect.outputs.bump }})" >> "$GITHUB_STEP_SUMMARY"
-            echo "${{ steps.pr.outputs.pr_url }}" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "${{ steps.push.outputs.version }}" ]; then
+            echo "## Released direct to master" >> "$GITHUB_STEP_SUMMARY"
+            echo "Version: ${{ steps.push.outputs.version }} (bump: ${{ steps.detect.outputs.bump }})" >> "$GITHUB_STEP_SUMMARY"
           fi
