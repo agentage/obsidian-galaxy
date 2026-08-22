@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-08-22
+
+### Infrastructure
+- Streamline release process with direct-to-master publishing, removing intermediate PR steps
+
 ## [0.2.4] - 2026-08-14
 
 No significant changes
