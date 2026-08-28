@@ -1,7 +1,7 @@
 {
 	"id": "agentage-galaxy",
 	"name": "Agentage Galaxy",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"minAppVersion": "1.7.2",
 	"description": "Fly through your vault as a cinematic 3D force-graph: notes are nodes, links are edges, folders are colored clusters. Search, filter, and orbit your knowledge from the toolbar.",
 	"author": "agentage",
