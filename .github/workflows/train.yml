@@ -21,7 +21,7 @@ name: Prepare Release
 # conclusion with the published GitHub release asserted before the job is green.
 on:
   schedule:
-    - cron: '0 19 * * 5'
+    - cron: '13 4 * * 6'
   workflow_dispatch:
     inputs:
       bump_type:
