@@ -1,6 +1,6 @@
 {
   "name": "obsidian-galaxy",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A 3D, rotating force-graph of your Obsidian vault. Part of Agentage Memory.",
   "private": true,
   "type": "module",
