@@ -38,9 +38,9 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "^26.5.0",
-    "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "5.0.0",
+    "@types/node": "^26.5.1",
+    "@types/three": "^0.186.0",
+    "@vitest/coverage-v8": "5.0.1",
     "esbuild": "^0.28.2",
     "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "3d-force-graph": "^1.80.0",
-    "three": "^0.185.1",
+    "three": "^0.186.0",
     "three-spritetext": "1.10.0"
   }
 }
