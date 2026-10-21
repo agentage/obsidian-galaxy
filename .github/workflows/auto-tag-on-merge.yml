@@ -1,6 +1,6 @@
 name: Auto-tag Release
 
-# When a release PR (from release-prepare.yml) lands on master, the merge commit
+# When a release PR (from prepare-release.yml) lands on master, the merge commit
 # touches manifest.json and its subject is `chore(release): X.Y.Z` (squash) or a
 # `Merge pull request ... release/...` merge commit. This creates + pushes the bare
 # tag `X.Y.Z` at that commit, then dispatches release.yml to build and publish the
