@@ -82,9 +82,7 @@ function mechanicalNotes(commits) {
     .filter((s) => !/^\d+\.\d+\.\d+/.test(s));
   const feats = subjects.filter((s) => /^feat(\([^)]*\))?!?:/.test(s));
   const fixes = subjects.filter((s) => /^fix(\([^)]*\))?!?:/.test(s));
-  const others = subjects.filter(
-    (s) => !/^(feat|fix|docs|chore|ci)(\([^)]*\))?!?:/.test(s)
-  );
+  const others = subjects.filter((s) => !/^(feat|fix|docs|chore|ci)(\([^)]*\))?!?:/.test(s));
   const section = (title, items) =>
     items.length ? `### ${title}\n${items.map((s) => `- ${s}`).join('\n')}\n` : '';
   const out = [

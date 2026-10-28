@@ -22,9 +22,17 @@ const HIDE = `for(const id of ['count','settings-btn','center-btn']){const e=doc
 execFileSync('node', [path.join(ROOT, 'scripts', 'build-sample.mjs'), VAULT], { cwd: ROOT });
 
 const browser = await chromium.launch({
-  args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: [
+    '--ignore-gpu-blocklist',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+  ],
 });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
+const page = await browser.newPage({
+  viewport: { width: 1600, height: 1000 },
+  deviceScaleFactor: 2,
+});
 const setSpeed = (v) =>
   `(()=>{const e=document.getElementById('r-speed'); e.value=${v}; e.dispatchEvent(new Event('input',{bubbles:true}));})()`;
 
