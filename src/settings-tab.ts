@@ -1,4 +1,10 @@
-import { Plugin, PluginSettingTab, Setting, type App, type SettingDefinitionItem } from 'obsidian';
+import {
+  type Plugin,
+  PluginSettingTab,
+  Setting,
+  type App,
+  type SettingDefinitionItem,
+} from 'obsidian';
 import type { Memory3DHost } from './graph-view';
 
 // Defaults for the 3D graph. Live, fine-grained tuning (forces, sizes, search) lives

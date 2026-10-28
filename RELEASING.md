@@ -47,7 +47,7 @@ The `version` npm script runs `version-bump.mjs`, which writes the new version i
 `manifest.json` and records `version -> minAppVersion` in `versions.json`.
 
 You can also run the **Release** workflow from the Actions tab (`workflow_dispatch`): it
-builds and releases the *current* `manifest.json` version (creating the matching tag).
+builds and releases the _current_ `manifest.json` version (creating the matching tag).
 Tick **draft** to inspect the assets before publishing.
 
 ## Notes

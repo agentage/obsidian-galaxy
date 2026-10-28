@@ -29,9 +29,17 @@ rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });
 
 const browser = await chromium.launch({
-  args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: [
+    '--ignore-gpu-blocklist',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+  ],
 });
-const page = await browser.newPage({ viewport: { width: 1000, height: 625 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({
+  viewport: { width: 1000, height: 625 },
+  deviceScaleFactor: 1,
+});
 await page.goto(`${URL}?t=${Date.now()}`, { waitUntil: 'load' });
 await page.waitForTimeout(10000);
 // Keep the harness DEFAULTS (labels on, orphans on, no tag/attachment toggles). Only turn

@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+build
+out
+main.js
+package-lock.json
+*.snap
+preview/harness.js
+preview/sample-data.js
+test-vault
+CHANGELOG.md
+manifest.json
+versions.json
