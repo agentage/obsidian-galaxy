@@ -3,7 +3,7 @@ import type { Memory3DSettings } from './settings';
 
 // onFilters: a data-affecting control changed (rebuild the graph from the vault).
 // onDisplay: a render-affecting control changed (re-apply renderer options only).
-export interface ControlsCallbacks {
+interface ControlsCallbacks {
   onFilters(): void;
   onDisplay(): void;
   onCenter(): void;

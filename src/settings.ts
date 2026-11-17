@@ -25,7 +25,7 @@ export interface Memory3DSettings {
   viewState: ViewState;
 }
 
-export const DEFAULT_FORCES: GraphForces = {
+const DEFAULT_FORCES: GraphForces = {
   centerStrength: 0.1,
   repelStrength: 10,
   linkStrength: 0.5,
