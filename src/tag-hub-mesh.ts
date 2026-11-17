@@ -31,12 +31,12 @@ export interface DimMaterial {
   base: number;
 }
 
-export interface TagHub {
+interface TagHub {
   object: Group;
   materials: DimMaterial[];
 }
 
-export interface TagHubOptions {
+interface TagHubOptions {
   color: string;
   radius: number;
   textColor: string;

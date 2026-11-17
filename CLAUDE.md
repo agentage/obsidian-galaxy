@@ -20,6 +20,7 @@ force-graph. A toolbar (ribbon) click opens an `ItemView` hosting the 3D graph.
     `metadataCache.resolvedLinks`/`unresolvedLinks` + file lists + tags) and
     `graphFromMarkdown`/`inputFromMarkdown` (parse `[[wikilinks]]` + `#tags`, for the
     harness/sample). One shared `assemble()` does degree, dedupe, orphan + search filters.
+  - `tag-hub.ts` + `camera-state.ts` - tag-hub logic and camera-state persistence helpers (unit tested).
   - `render.ts` - `createGraphRenderer(container, opts)` over 3d-force-graph: orbit
     controls + `controls().autoRotate` + `zoomToCursor`, per-group categorical node colors
     (large-graph style), `three-spritetext` labels, force tuning, one-time `zoomToFit`
@@ -61,4 +62,4 @@ npm run install:vault [vault]             # copy build into a vault + enable (de
 unresolved link, an orphan) used by the harness and for in-Obsidian testing.
 
 Inherits global agentage standards (`~/projects/CLAUDE.md`): Node 22+, TS strict ESM,
-named exports, Prettier/ESLint, no em dashes.
+named exports, Prettier/ESLint, no em dashes. Standards: `~/vaults/engineering/standards/` (start at `README.md`). Release flow: `RELEASING.md`.
