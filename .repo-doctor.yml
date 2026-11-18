@@ -1,0 +1,2 @@
+# repo-doctor config for this repo; schema in agentage/automation scripts/repo-doctor/README.md.
+class: plugin
